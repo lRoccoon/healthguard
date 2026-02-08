@@ -12,6 +12,7 @@ from ..utils.auth import get_current_user_id
 from ..core import MemoryManager
 from ..storage import LocalStorage
 from ..config import settings
+from ..agents.orchestrator import AgentOrchestrator
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -38,26 +39,36 @@ async def send_message(
     # Initialize memory manager for user
     memory_manager = MemoryManager(storage, user_id)
     
-    # Get user context from recent memories
-    context = await memory_manager.get_user_context(days_back=7)
+    # Initialize orchestrator
+    orchestrator = AgentOrchestrator(memory_manager)
     
-    # TODO: This is where we'll call the Router Agent to process the message
-    # For now, return a placeholder response
+    # Process message through agent system
+    agent_response = await orchestrator.process_message(
+        user_message=message.content,
+        user_id=user_id,
+        additional_context={}
+    )
     
     # Save chat to log
     session_id = str(uuid.uuid4())
     await memory_manager.save_chat_log(session_id, [
-        message.dict(),
+        {
+            "role": message.role,
+            "content": message.content,
+            "timestamp": message.timestamp.isoformat() if hasattr(message.timestamp, 'isoformat') else str(message.timestamp)
+        },
         {
             "role": "assistant",
-            "content": "This is a placeholder response. AI agents will be implemented in Phase 3.",
-            "timestamp": datetime.now().isoformat()
+            "content": agent_response["response"],
+            "timestamp": datetime.now().isoformat(),
+            "agent": agent_response.get("agent", "unknown"),
+            "routing": agent_response.get("routing", {})
         }
     ])
     
     response = ChatMessage(
         role="assistant",
-        content="你好！我是 HealthGuard AI 助手。目前我还在学习中，AI Agent 功能将在 Phase 3 实现。",
+        content=agent_response["response"],
         timestamp=datetime.now()
     )
     
