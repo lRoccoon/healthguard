@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- HealthKit Privacy Descriptions -->
+    <key>NSHealthShareUsageDescription</key>
+    <string>HealthGuard needs access to your health data to provide personalized fitness and dietary recommendations for managing insulin resistance.</string>
+    
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>HealthGuard may update your health data with insights from your activities.</string>
+    
+    <!-- Microphone for Voice Input -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>HealthGuard needs microphone access to record voice messages to your health assistant.</string>
+    
+    <!-- Photo Library -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>HealthGuard needs access to your photos to analyze food images and medical records.</string>
+    
+    <key>NSCameraUsageDescription</key>
+    <string>HealthGuard needs camera access to take photos of meals and medical documents.</string>
+    
+    <!-- Required capabilities -->
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>healthkit</string>
+    </array>
+    
+    <!-- Background modes (optional, for background health data sync) -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+        <string>processing</string>
+    </array>
+</dict>
+</plist>
