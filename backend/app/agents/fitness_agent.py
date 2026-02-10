@@ -1,5 +1,6 @@
 """
 Fitness Agent - Handles activity analysis and exercise recommendations.
+Uses LLM for intelligent analysis when available.
 """
 
 from typing import Dict, Any, Optional
@@ -40,6 +41,7 @@ When analyzing activity:
 - Consider user's fitness level and constraints
 - Emphasize the metabolic benefits for IR
 
+Always respond in the same language as the user's message.
 Always be encouraging and positive!
 """
         super().__init__("FitnessAgent", system_prompt)
@@ -51,28 +53,45 @@ Always be encouraging and positive!
     ) -> Dict[str, Any]:
         """
         Process fitness-related request.
-        
-        Args:
-            user_message: User's message about fitness
-            context: Context including HealthKit data
-            
-        Returns:
-            Analysis and recommendations
         """
-        # Analyze activity data
+        if self._llm_provider is not None:
+            return await self._process_with_llm(user_message, context)
+
+        # Fallback to template-based response
         analysis = await self._analyze_activity(user_message, context)
-        
-        # Generate recommendations
         recommendations = await self._generate_exercise_plan(analysis, context)
-        
-        # Format response
         response = self._format_response(analysis, recommendations)
-        
+
         return {
             "agent": "fitness",
             "response": response,
             "analysis": analysis,
             "recommendations": recommendations,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _process_with_llm(
+        self,
+        user_message: str,
+        context: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Process using LLM."""
+        context_str = self.format_context(context)
+        prompt = user_message
+        if context_str:
+            prompt = f"{context_str}\n\n{user_message}"
+
+        llm_response = await self.call_llm(
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+        )
+
+        return {
+            "agent": "fitness",
+            "response": llm_response,
             "timestamp": datetime.now().isoformat()
         }
 
@@ -82,14 +101,12 @@ Always be encouraging and positive!
         context: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Analyze activity data from message or context."""
-        # Extract health data if available
         health_data = context.get("health_data", {}) if context else {}
         
         steps = health_data.get("steps", 0)
         active_energy = health_data.get("active_energy", 0)
         exercise_minutes = health_data.get("exercise_minutes", 0)
         
-        # Evaluate performance
         steps_status = "优秀" if steps >= 10000 else "良好" if steps >= 8000 else "需改进"
         energy_status = "优秀" if active_energy >= 500 else "良好" if active_energy >= 400 else "需改进"
         
@@ -145,6 +162,6 @@ Always be encouraging and positive!
             response += f"{i}. {rec}\n"
         
         response += "\n🏃 运动是改善胰岛素抵抗的最佳天然药物！每一步都很重要！\n"
-        response += "\n_注意：Phase 3 将添加基于 Apple Health 的实时数据分析。_"
+        response += "\n_提示：配置 LLM API 后可获得更个性化的运动分析和建议。_"
         
         return response

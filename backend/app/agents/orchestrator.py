@@ -8,26 +8,38 @@ from .diet_agent import DietAgent
 from .fitness_agent import FitnessAgent
 from .medical_agent import MedicalAgent
 from ..core import MemoryManager
+from ..llm.base import LLMProvider
 
 
 class AgentOrchestrator:
     """
     Orchestrates the multi-agent system.
     Routes user requests to appropriate specialist agents.
+    Injects LLM provider into all agents when available.
     """
 
-    def __init__(self, memory_manager: MemoryManager):
+    def __init__(self, memory_manager: MemoryManager,
+                 llm_provider: Optional[LLMProvider] = None,
+                 api_mode: str = "chat"):
         """
         Initialize orchestrator with agent instances.
         
         Args:
             memory_manager: MemoryManager instance for user context
+            llm_provider: Optional LLM provider for all agents
+            api_mode: "chat" or "responses" API mode
         """
         self.memory_manager = memory_manager
         self.router = RouterAgent()
         self.diet_agent = DietAgent()
         self.fitness_agent = FitnessAgent()
         self.medical_agent = MedicalAgent()
+
+        # Inject LLM provider into all agents
+        if llm_provider:
+            for agent in [self.router, self.diet_agent,
+                          self.fitness_agent, self.medical_agent]:
+                agent.set_llm_provider(llm_provider, api_mode)
 
     async def process_message(
         self,
@@ -81,25 +93,24 @@ class AgentOrchestrator:
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle general conversation."""
-        # Simple greeting/general response
         message_lower = message.lower()
         
         if any(greeting in message_lower for greeting in ['hello', 'hi', '你好', '您好', 'hey']):
             response_text = """你好！👋 我是 HealthGuard AI，你的个人健康助理。
 
 我可以帮助你：
-- 🍽️ 分析食物和提供饮食建议
+- 🍽️ 分析食物和提供饮食建议（支持图片识别）
 - 🏃 追踪运动数据和制定健康计划  
-- 📋 解读医疗记录和监测健康指标
+- 📋 解读医疗记录和监测健康指标（支持报告图片识别）
 
 请告诉我你需要什么帮助！"""
         else:
             response_text = """我在这里帮助你管理胰岛素抵抗！
 
 你可以：
-- 告诉我你吃了什么，我来分析营养
+- 告诉我你吃了什么，或发送食物照片，我来分析营养
 - 分享你的运动数据，获取鼓励和建议
-- 上传医疗记录，了解你的健康趋势
+- 上传医疗记录图片，了解你的健康趋势
 
 有什么我可以帮助你的吗？"""
         

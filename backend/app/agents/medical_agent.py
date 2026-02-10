@@ -1,8 +1,9 @@
 """
 Medical Agent - Handles medical records analysis and health trend tracking.
+Uses multimodal LLM for image understanding (replaces traditional OCR).
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 from .base_agent import BaseAgent
 
@@ -10,13 +11,14 @@ from .base_agent import BaseAgent
 class MedicalAgent(BaseAgent):
     """
     Medical Agent specialized in medical record analysis and health indicator tracking.
+    Uses multimodal LLM to understand medical report images directly.
     """
 
     def __init__(self):
         system_prompt = """You are a Medical Agent for HealthGuard AI, specializing in insulin resistance (IR) health monitoring.
 
 Your expertise includes:
-- OCR and extraction of medical test results
+- Reading and extracting data from medical test result images
 - Analyzing key IR indicators (fasting insulin, HOMA-IR, A1C, glucose, lipids)
 - Tracking health trends over time
 - Providing context and explanations (NOT medical advice)
@@ -29,7 +31,7 @@ Key IR indicators:
 5. **Triglycerides**: Normal <150 mg/dL
 6. **HDL**: Should be >40 mg/dL (men), >50 mg/dL (women)
 
-When analyzing records:
+When analyzing records (text or images):
 - Extract all numerical values with units
 - Compare to normal ranges
 - Identify trends (improving/stable/worsening)
@@ -37,6 +39,7 @@ When analyzing records:
 - Suggest monitoring frequency
 - Recommend discussing with healthcare provider
 
+Always respond in the same language as the user's message.
 IMPORTANT: Always include disclaimer that this is informational only, not medical advice.
 """
         super().__init__("MedicalAgent", system_prompt)
@@ -47,24 +50,19 @@ IMPORTANT: Always include disclaimer that this is informational only, not medica
         context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Process medical-related request.
-        
-        Args:
-            user_message: User's message about medical data
-            context: Context including previous records
-            
-        Returns:
-            Analysis and insights
+        Process medical-related request, optionally with images.
+        Uses multimodal LLM for image understanding when images are provided.
         """
-        # Analyze medical data
+        image_base64_list = (context or {}).get("image_base64_list")
+
+        if self._llm_provider is not None:
+            return await self._process_with_llm(user_message, context, image_base64_list)
+
+        # Fallback to placeholder
         analysis = await self._analyze_medical_data(user_message, context)
-        
-        # Generate insights
         insights = await self._generate_insights(analysis, context)
-        
-        # Format response
         response = self._format_response(analysis, insights)
-        
+
         return {
             "agent": "medical",
             "response": response,
@@ -73,15 +71,47 @@ IMPORTANT: Always include disclaimer that this is informational only, not medica
             "timestamp": datetime.now().isoformat()
         }
 
+    async def _process_with_llm(
+        self,
+        user_message: str,
+        context: Optional[Dict[str, Any]],
+        image_base64_list: Optional[List[Dict[str, str]]] = None,
+    ) -> Dict[str, Any]:
+        """Process using multimodal LLM for medical image understanding."""
+        context_str = self.format_context(context)
+        prompt = user_message
+        if context_str:
+            prompt = f"{context_str}\n\n{user_message}"
+
+        if image_base64_list:
+            prompt += (
+                "\n\n[User has attached medical report image(s). "
+                "Please read and extract data from the image(s), analyze the results, "
+                "and provide health insights.]"
+            )
+
+        llm_response = await self.call_llm(
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,  # Lower temperature for medical analysis accuracy
+            image_base64_list=image_base64_list,
+        )
+
+        return {
+            "agent": "medical",
+            "response": llm_response,
+            "has_image": bool(image_base64_list),
+            "timestamp": datetime.now().isoformat()
+        }
+
     async def _analyze_medical_data(
         self,
         message: str,
         context: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """Analyze medical data from message or uploaded files."""
-        # Placeholder implementation
-        # In Phase 3, this will use OCR (pytesseract, pdf2image) for document processing
-        
+        """Analyze medical data from message (fallback without LLM)."""
         return {
             "extracted_data": {
                 "空腹胰岛素": "待提取",
@@ -111,7 +141,7 @@ IMPORTANT: Always include disclaimer that this is informational only, not medica
         analysis: Dict[str, Any],
         insights: list
     ) -> str:
-        """Format response for user."""
+        """Format response for user (fallback)."""
         response = f"""## 医疗记录分析
 
 **数据来源**: {analysis['data_source']}
@@ -130,6 +160,6 @@ IMPORTANT: Always include disclaimer that this is informational only, not medica
 
 ⚠️ **重要提示**: 此分析仅供参考，不构成医疗建议。请务必与您的医疗保健提供者讨论您的检查结果和治疗方案。
 
-_注意：Phase 3 将实现 OCR 功能，自动提取医疗报告中的数据。_
+_提示：配置 LLM API 后可自动识别和分析医疗报告图片。_
 """
         return response

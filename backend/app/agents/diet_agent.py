@@ -1,8 +1,9 @@
 """
 Diet Agent - Handles food analysis, GI values, and dietary recommendations.
+Uses LLM with multimodal support for food image recognition.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 from .base_agent import BaseAgent
 
@@ -10,6 +11,7 @@ from .base_agent import BaseAgent
 class DietAgent(BaseAgent):
     """
     Diet Agent specialized in food analysis and dietary recommendations for insulin resistance.
+    Supports image-based food recognition via multimodal LLM.
     """
 
     def __init__(self):
@@ -21,6 +23,7 @@ Your expertise includes:
 - Assessing meal appropriateness for insulin resistance management
 - Providing low-GI food recommendations
 - Creating balanced meal plans
+- Recognizing food from images and providing nutritional analysis
 
 Key principles for IR diet:
 1. Prioritize LOW GI foods (GI < 55): vegetables, legumes, whole grains, lean proteins
@@ -30,13 +33,15 @@ Key principles for IR diet:
 5. Portion control is essential
 6. Frequent small meals > few large meals
 
-When analyzing food:
+When analyzing food (text or image):
+- Identify all foods visible or mentioned
 - Estimate calories if not provided
 - Categorize GI value (Low/Medium/High)
 - Assess IR-friendliness (Excellent/Good/Fair/Poor/Avoid)
 - Provide specific, actionable recommendations
 - Be encouraging but honest
 
+Always respond in the same language as the user's message.
 Always end with practical next steps and encouragement.
 """
         super().__init__("DietAgent", system_prompt)
@@ -47,24 +52,25 @@ Always end with practical next steps and encouragement.
         context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Process food-related request.
+        Process food-related request, optionally with images.
         
         Args:
             user_message: User's message about food
-            context: Context including user history
+            context: Context including user history and optional image data
             
         Returns:
             Analysis and recommendations
         """
-        # Extract food information from message
+        image_base64_list = (context or {}).get("image_base64_list")
+
+        if self._llm_provider is not None:
+            return await self._process_with_llm(user_message, context, image_base64_list)
+
+        # Fallback to placeholder
         analysis = await self._analyze_food(user_message, context)
-        
-        # Generate recommendations
         recommendations = await self._generate_recommendations(analysis, context)
-        
-        # Format response
         response = self._format_response(analysis, recommendations)
-        
+
         return {
             "agent": "diet",
             "response": response,
@@ -73,15 +79,43 @@ Always end with practical next steps and encouragement.
             "timestamp": datetime.now().isoformat()
         }
 
+    async def _process_with_llm(
+        self,
+        user_message: str,
+        context: Optional[Dict[str, Any]],
+        image_base64_list: Optional[List[Dict[str, str]]] = None,
+    ) -> Dict[str, Any]:
+        """Process using LLM with optional image understanding."""
+        context_str = self.format_context(context)
+        prompt = user_message
+        if context_str:
+            prompt = f"{context_str}\n\n{user_message}"
+
+        if image_base64_list:
+            prompt += "\n\n[User has attached food image(s). Please analyze the food in the image(s).]"
+
+        llm_response = await self.call_llm(
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            image_base64_list=image_base64_list,
+        )
+
+        return {
+            "agent": "diet",
+            "response": llm_response,
+            "has_image": bool(image_base64_list),
+            "timestamp": datetime.now().isoformat()
+        }
+
     async def _analyze_food(
         self,
         message: str,
         context: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """Analyze food mentioned in message."""
-        # Placeholder implementation
-        # In Phase 3, this will use LLM + image recognition for food photos
-        
+        """Analyze food mentioned in message (fallback when LLM not available)."""
         return {
             "food_name": "用户提到的食物",
             "estimated_calories": "待分析",
@@ -95,8 +129,7 @@ Always end with practical next steps and encouragement.
         analysis: Dict[str, Any],
         context: Optional[Dict[str, Any]]
     ) -> list:
-        """Generate dietary recommendations."""
-        # Placeholder recommendations
+        """Generate dietary recommendations (fallback)."""
         return [
             "选择低GI食物，如全谷物、蔬菜和瘦肉蛋白",
             "避免精制碳水化合物和含糖饮料",
@@ -109,7 +142,7 @@ Always end with practical next steps and encouragement.
         analysis: Dict[str, Any],
         recommendations: list
     ) -> str:
-        """Format response for user."""
+        """Format response for user (fallback)."""
         response = f"""## 饮食分析
 
 **食物**: {analysis['food_name']}
@@ -124,6 +157,6 @@ Always end with practical next steps and encouragement.
             response += f"{i}. {rec}\n"
         
         response += "\n💪 记住：每一个健康的选择都在帮助你控制胰岛素抵抗！继续保持！\n"
-        response += "\n_注意：Phase 3 将集成真实的食物数据库和图像识别功能。_"
+        response += "\n_提示：配置 LLM API 后可获得更智能的食物分析和图片识别功能。_"
         
         return response
