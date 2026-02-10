@@ -177,7 +177,7 @@ class TestVolcEngineProvider:
         provider = VolcEngineProvider(api_key="test-key")
         assert provider.api_key == "test-key"
         assert provider.model == "doubao-1-5-pro-256k-250115"
-        assert "volces.com" in provider.base_url
+        assert provider.base_url == "https://ark.cn-beijing.volces.com/api/v3"
 
     def test_init_custom(self):
         provider = VolcEngineProvider(
