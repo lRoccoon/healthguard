@@ -5,6 +5,7 @@ Supports text messages, image uploads, and voice messages.
 
 import base64
 import logging
+from collections import OrderedDict
 from fastapi import APIRouter, Request, HTTPException
 
 from ..channels.feishu import FeishuBot
@@ -44,8 +45,8 @@ def _get_llm_provider():
     )
 
 
-# Track processed event IDs to avoid duplicate processing
-_processed_events: set = set()
+# Track processed event IDs to avoid duplicate processing (LRU-style)
+_processed_events: OrderedDict = OrderedDict()
 _MAX_PROCESSED_EVENTS = 1000
 
 
@@ -74,12 +75,10 @@ async def feishu_webhook(request: Request):
     if event_id:
         if event_id in _processed_events:
             return {"code": 0, "msg": "ok"}
-        _processed_events.add(event_id)
-        # Prevent unbounded growth
-        if len(_processed_events) > _MAX_PROCESSED_EVENTS:
-            excess = len(_processed_events) - _MAX_PROCESSED_EVENTS // 2
-            for _ in range(excess):
-                _processed_events.pop()
+        _processed_events[event_id] = True
+        # Evict oldest entries when exceeding max size
+        while len(_processed_events) > _MAX_PROCESSED_EVENTS:
+            _processed_events.popitem(last=False)
 
     if event["type"] != "message":
         return {"code": 0, "msg": "ok"}
