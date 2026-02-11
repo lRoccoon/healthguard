@@ -3,7 +3,7 @@ Diet Agent - Handles food analysis, GI values, and dietary recommendations.
 Uses LLM with multimodal support for food image recognition.
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, AsyncGenerator
 from datetime import datetime
 from .base_agent import BaseAgent
 
@@ -109,6 +109,49 @@ Always end with practical next steps and encouragement.
             "has_image": bool(image_base64_list),
             "timestamp": datetime.now().isoformat()
         }
+
+    async def process_request_stream(
+        self,
+        user_message: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> AsyncGenerator[str, None]:
+        """
+        Process food-related request with streaming output.
+
+        Args:
+            user_message: User's message about food
+            context: Context including user history and optional image data
+
+        Yields:
+            str: Tokens from the LLM response
+        """
+        image_base64_list = (context or {}).get("image_base64_list")
+
+        # If LLM not configured, fallback to non-streaming
+        if self._llm_provider is None:
+            result = await self.process_request(user_message, context)
+            yield result["response"]
+            return
+
+        # Build prompt with context
+        context_str = self.format_context(context)
+        prompt = user_message
+        if context_str:
+            prompt = f"{context_str}\n\n{user_message}"
+
+        if image_base64_list:
+            prompt += "\n\n[User has attached food image(s). Please analyze the food in the image(s).]"
+
+        # Stream tokens from LLM
+        async for token in self.call_llm_stream(
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            image_base64_list=image_base64_list,
+        ):
+            yield token
 
     async def _analyze_food(
         self,

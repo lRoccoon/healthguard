@@ -50,7 +50,16 @@ class Settings(BaseSettings):
         "http://localhost:8080",
         "http://127.0.0.1:3000",
     ]
-    
+
+    # Logging configuration
+    log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    log_file_path: str = "./logs/healthguard.log"
+    log_file_enabled: bool = True
+    log_console_enabled: bool = True
+    log_json_format: bool = True  # JSON format for files, human-readable for console
+    log_api_requests: bool = True  # Log all API requests/responses
+    log_llm_calls: bool = True  # Log all LLM calls with token usage
+
     class Config:
         env_file = ".env"
         case_sensitive = False

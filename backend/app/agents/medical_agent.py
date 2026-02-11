@@ -3,7 +3,7 @@ Medical Agent - Handles medical records analysis and health trend tracking.
 Uses multimodal LLM for image understanding (replaces traditional OCR).
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, AsyncGenerator
 from datetime import datetime
 from .base_agent import BaseAgent
 
@@ -105,6 +105,53 @@ IMPORTANT: Always include disclaimer that this is informational only, not medica
             "has_image": bool(image_base64_list),
             "timestamp": datetime.now().isoformat()
         }
+
+    async def process_request_stream(
+        self,
+        user_message: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> AsyncGenerator[str, None]:
+        """
+        Process medical-related request with streaming output.
+
+        Args:
+            user_message: User's message about medical data
+            context: Context including user history and optional image data
+
+        Yields:
+            str: Tokens from the LLM response
+        """
+        image_base64_list = (context or {}).get("image_base64_list")
+
+        # If LLM not configured, fallback to non-streaming
+        if self._llm_provider is None:
+            result = await self.process_request(user_message, context)
+            yield result["response"]
+            return
+
+        # Build prompt with context
+        context_str = self.format_context(context)
+        prompt = user_message
+        if context_str:
+            prompt = f"{context_str}\n\n{user_message}"
+
+        if image_base64_list:
+            prompt += (
+                "\n\n[User has attached medical report image(s). "
+                "Please read and extract data from the image(s), analyze the results, "
+                "and provide health insights.]"
+            )
+
+        # Stream tokens from LLM
+        async for token in self.call_llm_stream(
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,  # Lower temperature for medical analysis accuracy
+            image_base64_list=image_base64_list,
+        ):
+            yield token
 
     async def _analyze_medical_data(
         self,

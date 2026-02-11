@@ -2,23 +2,32 @@
 HealthGuard AI - Main FastAPI Application
 """
 
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .config import settings
 from .api import auth_router, chat_router, health_router, feishu_router
+from .core.logging_config import setup_logging
+from .middleware import RequestLoggingMiddleware
+
+# Logger will be initialized after setup_logging() is called
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
     # Startup
-    print(f"Starting {settings.app_name} v{settings.app_version}")
-    print(f"Storage path: {settings.local_storage_path}")
+    setup_logging(settings)
+    logger.info(f"Starting {settings.app_name} v{settings.app_version}")
+    logger.info(f"Storage path: {settings.local_storage_path}")
+    logger.info(f"Log level: {settings.log_level.upper()}")
+    logger.info(f"Debug mode: {settings.debug}")
     yield
     # Shutdown
-    print(f"Shutting down {settings.app_name}")
+    logger.info(f"Shutting down {settings.app_name}")
 
 
 # Create FastAPI application
@@ -37,6 +46,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add request logging middleware (after CORS)
+if settings.log_api_requests:
+    app.add_middleware(RequestLoggingMiddleware)
 
 # Include routers
 app.include_router(auth_router)

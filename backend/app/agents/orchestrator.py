@@ -2,13 +2,16 @@
 Agent Orchestrator - Coordinates between Router Agent and Specialist Agents.
 """
 
-from typing import Dict, Any, Optional
+import logging
+from typing import Dict, Any, Optional, AsyncGenerator
 from .router_agent import RouterAgent
 from .diet_agent import DietAgent
 from .fitness_agent import FitnessAgent
 from .medical_agent import MedicalAgent
 from ..core import MemoryManager
 from ..llm.base import LLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 class AgentOrchestrator:
@@ -49,43 +52,176 @@ class AgentOrchestrator:
     ) -> Dict[str, Any]:
         """
         Process user message through the agent system.
-        
+
         Args:
             user_message: User's message
             user_id: User identifier
             additional_context: Optional additional context (e.g., health data, images)
-            
+
         Returns:
             Response from appropriate agent
         """
-        # Get user context from memory
-        user_context = await self.memory_manager.get_user_context(days_back=7)
-        
-        # Combine with additional context
-        context = {
-            "user_history": user_context,
-            **(additional_context or {})
-        }
-        
-        # Route to appropriate agent
-        routing = await self.router.process_request(user_message, context)
-        
-        agent_type = routing["agent"]
-        
-        # Get response from specialist agent
-        if agent_type == "diet":
-            response = await self.diet_agent.process_request(user_message, context)
-        elif agent_type == "fitness":
-            response = await self.fitness_agent.process_request(user_message, context)
-        elif agent_type == "medical":
-            response = await self.medical_agent.process_request(user_message, context)
-        else:  # general
-            response = await self._handle_general(user_message, context)
-        
-        # Add routing info to response
-        response["routing"] = routing
-        
-        return response
+        # Log message processing start (INFO level)
+        logger.info(
+            f"Processing message from user {user_id}: {user_message[:100]}"
+        )
+
+        try:
+            # Get user context from memory
+            user_context = await self.memory_manager.get_user_context(days_back=7)
+
+            # Combine with additional context
+            context = {
+                "user_history": user_context,
+                **(additional_context or {})
+            }
+
+            # Route to appropriate agent
+            routing = await self.router.process_request(user_message, context)
+
+            agent_type = routing["agent"]
+
+            # Log routing decision (INFO level)
+            logger.info(
+                f"Delegating to {agent_type} agent (confidence={routing.get('confidence', 'N/A')})"
+            )
+
+            # Get response from specialist agent
+            if agent_type == "diet":
+                response = await self.diet_agent.process_request(user_message, context)
+            elif agent_type == "fitness":
+                response = await self.fitness_agent.process_request(user_message, context)
+            elif agent_type == "medical":
+                response = await self.medical_agent.process_request(user_message, context)
+            else:  # general
+                response = await self._handle_general(user_message, context)
+
+            # Add routing info to response
+            response["routing"] = routing
+
+            # Log completion (INFO level)
+            logger.info(
+                f"Message processing completed: agent={agent_type}, "
+                f"response_length={len(str(response.get('response', '')))} chars"
+            )
+
+            return response
+        except Exception as e:
+            logger.error(
+                f"Message processing failed for user {user_id}: {str(e)}",
+                exc_info=True,
+                extra={"extra_fields": {"user_id": user_id, "error": str(e)}}
+            )
+            raise
+
+    async def process_message_stream(
+        self,
+        user_message: str,
+        user_id: str,
+        additional_context: Optional[Dict[str, Any]] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Process user message through the agent system with streaming output.
+
+        Args:
+            user_message: User's message
+            user_id: User identifier
+            additional_context: Optional additional context (e.g., health data, images)
+
+        Yields:
+            Dict[str, Any]: Events with types: routing, content, done, or error
+        """
+        # Log stream processing start (INFO level)
+        logger.info(
+            f"Processing message stream from user {user_id}: {user_message[:100]}"
+        )
+
+        try:
+            # Get user context from memory (blocking - must complete before streaming)
+            user_context = await self.memory_manager.get_user_context(days_back=7)
+
+            # Combine with additional context
+            context = {
+                "user_history": user_context,
+                **(additional_context or {})
+            }
+
+            # Route to appropriate agent (blocking - must complete before streaming)
+            routing = await self.router.process_request(user_message, context)
+            agent_type = routing["agent"]
+
+            # Log routing decision (INFO level)
+            logger.info(
+                f"Stream delegating to {agent_type} agent (confidence={routing.get('confidence', 'N/A')})"
+            )
+
+            # Yield routing event
+            yield {
+                "type": "routing",
+                "agent": agent_type,
+                "confidence": routing.get("confidence"),
+                "reason": routing.get("reason", "")
+            }
+
+            # Stream response from specialist agent
+            if agent_type == "diet":
+                agent = self.diet_agent
+            elif agent_type == "fitness":
+                agent = self.fitness_agent
+            elif agent_type == "medical":
+                agent = self.medical_agent
+            else:  # general
+                # For general messages, yield the complete response as content
+                try:
+                    general_response = await self._handle_general(user_message, context)
+                    yield {
+                        "type": "content",
+                        "content": general_response["response"]
+                    }
+                    yield {"type": "done"}
+                    logger.info(f"Stream processing completed: agent=general")
+                except Exception as gen_e:
+                    logger.error(f"General response failed: {str(gen_e)}", exc_info=True)
+                    yield {"type": "error", "error": str(gen_e)}
+                return
+
+            # Stream tokens from specialist agent
+            accumulated_content = ""
+            try:
+                async for token in agent.process_request_stream(user_message, context):
+                    accumulated_content += token
+                    yield {
+                        "type": "content",
+                        "content": token
+                    }
+            except Exception as stream_e:
+                logger.error(
+                    f"Stream from {agent_type} agent failed: {str(stream_e)}",
+                    exc_info=True
+                )
+                yield {"type": "error", "error": str(stream_e)}
+                return
+
+            # Yield done event
+            yield {"type": "done"}
+
+            # Log completion (INFO level)
+            logger.info(
+                f"Stream processing completed: agent={agent_type}, "
+                f"content_length={len(accumulated_content)} chars"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Stream processing failed for user {user_id}: {str(e)}",
+                exc_info=True,
+                extra={"extra_fields": {"user_id": user_id, "error": str(e)}}
+            )
+            # Yield error event
+            yield {
+                "type": "error",
+                "error": str(e)
+            }
 
     async def _handle_general(
         self,

@@ -3,7 +3,7 @@ Fitness Agent - Handles activity analysis and exercise recommendations.
 Uses LLM for intelligent analysis when available.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, AsyncGenerator
 from datetime import datetime
 from .base_agent import BaseAgent
 
@@ -94,6 +94,43 @@ Always be encouraging and positive!
             "response": llm_response,
             "timestamp": datetime.now().isoformat()
         }
+
+    async def process_request_stream(
+        self,
+        user_message: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> AsyncGenerator[str, None]:
+        """
+        Process fitness-related request with streaming output.
+
+        Args:
+            user_message: User's message about fitness
+            context: Context including user history and health data
+
+        Yields:
+            str: Tokens from the LLM response
+        """
+        # If LLM not configured, fallback to non-streaming
+        if self._llm_provider is None:
+            result = await self.process_request(user_message, context)
+            yield result["response"]
+            return
+
+        # Build prompt with context
+        context_str = self.format_context(context)
+        prompt = user_message
+        if context_str:
+            prompt = f"{context_str}\n\n{user_message}"
+
+        # Stream tokens from LLM
+        async for token in self.call_llm_stream(
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+        ):
+            yield token
 
     async def _analyze_activity(
         self,

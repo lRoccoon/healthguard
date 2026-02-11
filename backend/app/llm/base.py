@@ -4,7 +4,7 @@ Supports multimodal messages (text + images).
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, AsyncGenerator
 from dataclasses import dataclass, field
 
 
@@ -100,6 +100,28 @@ class LLMProvider(ABC):
 
         Returns:
             LLMResponse with the generated content
+        """
+        pass
+
+    @abstractmethod
+    async def chat_completion_stream(
+        self,
+        messages: List[LLMMessage],
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        **kwargs
+    ) -> AsyncGenerator[str, None]:
+        """
+        Stream chat completion tokens.
+
+        Args:
+            messages: List of conversation messages (supports multimodal)
+            temperature: Sampling temperature override
+            max_tokens: Max tokens override
+            **kwargs: Additional provider-specific parameters
+
+        Yields:
+            str: Individual tokens/chunks from the LLM
         """
         pass
 

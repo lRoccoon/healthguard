@@ -3,8 +3,11 @@ Router Agent - Analyzes user intent and routes to appropriate sub-agent.
 """
 
 import json
+import logging
 from typing import Dict, Any, Optional
 from .base_agent import BaseAgent
+
+logger = logging.getLogger(__name__)
 
 
 class RouterAgent(BaseAgent):
@@ -47,12 +50,29 @@ Examples:
         Analyze user message and route to appropriate agent.
         Uses LLM if available, otherwise falls back to keyword matching.
         """
+        # Log routing start (DEBUG level)
+        if logger.isEnabledFor(logging.DEBUG):
+            message_preview = user_message[:100] if len(user_message) > 100 else user_message
+            logger.debug(f"Router analyzing message: {message_preview}")
+
         # Try LLM routing first
         if self._llm_provider is not None:
-            return await self._route_with_llm(user_message, context)
+            result = await self._route_with_llm(user_message, context)
+            # Log routing decision (DEBUG level)
+            logger.debug(
+                f"LLM routing decision: agent={result['agent']}, "
+                f"confidence={result['confidence']}, reason={result.get('reason', 'N/A')}"
+            )
+            return result
 
         # Fallback to keyword-based routing
-        return self._route_with_keywords(user_message)
+        result = self._route_with_keywords(user_message)
+        # Log routing decision (DEBUG level)
+        logger.debug(
+            f"Keyword routing decision: agent={result['agent']}, "
+            f"confidence={result['confidence']}, reason={result.get('reason', 'N/A')}"
+        )
+        return result
 
     async def _route_with_llm(
         self,
@@ -60,6 +80,8 @@ Examples:
         context: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Route using LLM for intent analysis."""
+        logger.debug("Using LLM for routing decision")
+
         context_str = self.format_context(context)
         prompt = user_message
         if context_str:
@@ -85,14 +107,17 @@ Examples:
                         "confidence": float(result.get("confidence", 0.8)),
                         "reason": result.get("reason", "LLM routing")
                     }
-        except (json.JSONDecodeError, ValueError, KeyError):
-            pass
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            logger.warning(f"Failed to parse LLM routing response: {str(e)}, falling back to keywords")
 
         # If LLM response couldn't be parsed, fall back to keywords
+        logger.debug("LLM routing failed, falling back to keyword-based routing")
         return self._route_with_keywords(user_message)
 
     def _route_with_keywords(self, user_message: str) -> Dict[str, Any]:
         """Fallback keyword-based routing."""
+        logger.debug("Using keyword-based routing")
+
         user_message_lower = user_message.lower()
 
         diet_keywords = ['food', 'eat', 'meal', 'breakfast', 'lunch', 'dinner', 'snack',
@@ -109,6 +134,12 @@ Examples:
         diet_score = sum(1 for kw in diet_keywords if kw in user_message_lower)
         fitness_score = sum(1 for kw in fitness_keywords if kw in user_message_lower)
         medical_score = sum(1 for kw in medical_keywords if kw in user_message_lower)
+
+        # Log keyword scores (DEBUG level)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"Keyword scores: diet={diet_score}, fitness={fitness_score}, medical={medical_score}"
+            )
 
         if diet_score > fitness_score and diet_score > medical_score:
             return {
