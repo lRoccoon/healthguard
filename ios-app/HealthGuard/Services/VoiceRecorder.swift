@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import Combine
 
 /// Voice recorder for capturing audio messages
 class VoiceRecorder: NSObject, ObservableObject {
@@ -28,20 +29,39 @@ class VoiceRecorder: NSObject, ObservableObject {
     }
 
     func startRecording() throws {
-        // Request microphone permission
-        AVAudioSession.sharedInstance().requestRecordPermission { [weak self] allowed in
-            guard let self = self else { return }
+        // Request microphone permission (iOS 17+ compatible)
+        if #available(iOS 17.0, *) {
+            AVAudioApplication.requestRecordPermission { [weak self] allowed in
+                guard let self = self else { return }
 
-            if allowed {
-                DispatchQueue.main.async {
-                    do {
-                        try self.beginRecording()
-                    } catch {
-                        print("Failed to start recording: \(error)")
+                if allowed {
+                    DispatchQueue.main.async {
+                        do {
+                            try self.beginRecording()
+                        } catch {
+                            print("Failed to start recording: \(error)")
+                        }
                     }
+                } else {
+                    print("Microphone permission denied")
                 }
-            } else {
-                print("Microphone permission denied")
+            }
+        } else {
+            // Fallback for iOS 16 and earlier
+            AVAudioSession.sharedInstance().requestRecordPermission { [weak self] allowed in
+                guard let self = self else { return }
+
+                if allowed {
+                    DispatchQueue.main.async {
+                        do {
+                            try self.beginRecording()
+                        } catch {
+                            print("Failed to start recording: \(error)")
+                        }
+                    }
+                } else {
+                    print("Microphone permission denied")
+                }
             }
         }
     }
