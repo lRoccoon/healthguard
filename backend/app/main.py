@@ -21,6 +21,14 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
     # Startup
     setup_logging(settings)
+
+    # Initialize user storage
+    from .storage.user_storage import init_user_storage
+    from .storage.local_storage import LocalStorage
+    storage = LocalStorage(settings.local_storage_path)
+    init_user_storage(storage)
+    logger.info("User storage initialized")
+
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Storage path: {settings.local_storage_path}")
     logger.info(f"Log level: {settings.log_level.upper()}")
