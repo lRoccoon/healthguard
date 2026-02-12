@@ -18,7 +18,40 @@ class APIClient {
         self.session = URLSession(configuration: config)
         
         self.decoder = JSONDecoder()
-        self.decoder.dateDecodingStrategy = .iso8601
+        self.decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let dateString = try container.decode(String.self)
+            
+            // ISO 8601 with fractional seconds and timezone (e.g. "2026-02-12T10:30:45.123456+00:00")
+            let isoFractional = ISO8601DateFormatter()
+            isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = isoFractional.date(from: dateString) {
+                return date
+            }
+            
+            // ISO 8601 without fractional seconds (e.g. "2026-02-12T10:30:45Z")
+            let isoBasic = ISO8601DateFormatter()
+            isoBasic.formatOptions = [.withInternetDateTime]
+            if let date = isoBasic.date(from: dateString) {
+                return date
+            }
+            
+            // Python naive datetime with fractional seconds (e.g. "2026-02-12T10:30:45.123456")
+            let df = DateFormatter()
+            df.locale = Locale(identifier: "en_US_POSIX")
+            df.timeZone = TimeZone(secondsFromGMT: 0)
+            for fmt in ["yyyy-MM-dd'T'HH:mm:ss.SSSSSS", "yyyy-MM-dd'T'HH:mm:ss"] {
+                df.dateFormat = fmt
+                if let date = df.date(from: dateString) {
+                    return date
+                }
+            }
+            
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Cannot decode date string: \(dateString)"
+            )
+        }
         
         self.encoder = JSONEncoder()
         self.encoder.dateEncodingStrategy = .iso8601

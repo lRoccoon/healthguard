@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     ]
 
     # Logging configuration
-    log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    log_level: str = "DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     log_file_path: str = "./logs/healthguard.log"
     log_file_enabled: bool = True
     log_console_enabled: bool = True

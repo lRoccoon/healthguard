@@ -2,7 +2,7 @@
 Authentication utilities - JWT token handling and password hashing.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import bcrypt
 from jose import JWTError, jwt
@@ -133,8 +133,8 @@ def create_user_in_db(username: str, hashed_password: str, email: Optional[str] 
         "username": username,
         "email": email,
         "hashed_password": hashed_password,
-        "created_at": datetime.now(),
-        "updated_at": datetime.now(),
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
         "is_active": True,
         "has_insulin_resistance": True,
         "health_goals": None,

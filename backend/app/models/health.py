@@ -2,7 +2,7 @@
 Health Data Models - Defines structures for HealthKit data and other health metrics.
 """
 
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional, List
 from pydantic import BaseModel, Field
 
@@ -27,7 +27,7 @@ class HealthKitData(BaseModel):
     flights_climbed: Optional[int] = None
     
     # Metadata
-    synced_at: datetime = Field(default_factory=datetime.now)
+    synced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class FoodEntry(BaseModel):
@@ -36,7 +36,7 @@ class FoodEntry(BaseModel):
     description: Optional[str] = None
     calories: Optional[float] = None
     gi_value: Optional[str] = None  # Low, Medium, High
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     image_url: Optional[str] = None
     
     # Analysis results
@@ -50,7 +50,7 @@ class MedicalRecord(BaseModel):
     user_id: str
     filename: str
     file_type: str  # image, pdf
-    upload_date: datetime = Field(default_factory=datetime.now)
+    upload_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # OCR and analysis results
     extracted_data: Optional[dict] = None
@@ -61,7 +61,7 @@ class ChatMessage(BaseModel):
     """Chat message model."""
     role: str  # user, assistant, system
     content: str
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Optional attachments
     attachments: Optional[List[dict]] = None

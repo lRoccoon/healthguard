@@ -209,3 +209,6 @@ __marimo__/
 # HealthGuard - Local data storage
 backend/data/
 data/
+
+.DS_Store
+Thumbs.db
