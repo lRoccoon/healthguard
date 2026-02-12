@@ -96,21 +96,20 @@ class HealthKitManager: ObservableObject {
         guard let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount) else {
             return nil
         }
-        
+
         let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
-        let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum)
-        
+
         return try await withCheckedThrowingContinuation { continuation in
-            query.initialResultsHandler = { _, result, error in
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { (query: HKStatisticsQuery, result: HKStatistics?, error: Error?) in
                 if let error = error {
                     continuation.resume(throwing: error)
                     return
                 }
-                
-                let steps = result?.sumQuantity()?.doubleValue(for: .count())
+
+                let steps = result?.sumQuantity()?.doubleValue(for: HKUnit.count())
                 continuation.resume(returning: steps.map { Int($0) })
             }
-            
+
             healthStore.execute(query)
         }
     }
@@ -120,21 +119,20 @@ class HealthKitManager: ObservableObject {
         guard let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) else {
             return nil
         }
-        
+
         let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
-        let query = HKStatisticsQuery(quantityType: energyType, quantitySamplePredicate: predicate, options: .cumulativeSum)
-        
+
         return try await withCheckedThrowingContinuation { continuation in
-            query.initialResultsHandler = { _, result, error in
+            let query = HKStatisticsQuery(quantityType: energyType, quantitySamplePredicate: predicate, options: .cumulativeSum) { (query: HKStatisticsQuery, result: HKStatistics?, error: Error?) in
                 if let error = error {
                     continuation.resume(throwing: error)
                     return
                 }
-                
-                let energy = result?.sumQuantity()?.doubleValue(for: .kilocalorie())
+
+                let energy = result?.sumQuantity()?.doubleValue(for: HKUnit.kilocalorie())
                 continuation.resume(returning: energy)
             }
-            
+
             healthStore.execute(query)
         }
     }
@@ -144,24 +142,23 @@ class HealthKitManager: ObservableObject {
         guard let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) else {
             return (nil, nil, nil)
         }
-        
+
         let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
-        let query = HKStatisticsQuery(quantityType: heartRateType, quantitySamplePredicate: predicate, options: [.discreteAverage, .discreteMin, .discreteMax])
-        
+
         return try await withCheckedThrowingContinuation { continuation in
-            query.initialResultsHandler = { _, result, error in
+            let query = HKStatisticsQuery(quantityType: heartRateType, quantitySamplePredicate: predicate, options: [.discreteAverage, .discreteMin, .discreteMax]) { (query: HKStatisticsQuery, result: HKStatistics?, error: Error?) in
                 if let error = error {
                     continuation.resume(throwing: error)
                     return
                 }
-                
+
                 let average = result?.averageQuantity()?.doubleValue(for: HKUnit(from: "count/min"))
                 let min = result?.minimumQuantity()?.doubleValue(for: HKUnit(from: "count/min"))
                 let max = result?.maximumQuantity()?.doubleValue(for: HKUnit(from: "count/min"))
-                
+
                 continuation.resume(returning: (average, min, max))
             }
-            
+
             healthStore.execute(query)
         }
     }
@@ -171,21 +168,20 @@ class HealthKitManager: ObservableObject {
         guard let exerciseType = HKQuantityType.quantityType(forIdentifier: .appleExerciseTime) else {
             return nil
         }
-        
+
         let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
-        let query = HKStatisticsQuery(quantityType: exerciseType, quantitySamplePredicate: predicate, options: .cumulativeSum)
-        
+
         return try await withCheckedThrowingContinuation { continuation in
-            query.initialResultsHandler = { _, result, error in
+            let query = HKStatisticsQuery(quantityType: exerciseType, quantitySamplePredicate: predicate, options: .cumulativeSum) { (query: HKStatisticsQuery, result: HKStatistics?, error: Error?) in
                 if let error = error {
                     continuation.resume(throwing: error)
                     return
                 }
-                
-                let minutes = result?.sumQuantity()?.doubleValue(for: .minute())
+
+                let minutes = result?.sumQuantity()?.doubleValue(for: HKUnit.minute())
                 continuation.resume(returning: minutes.map { Int($0) })
             }
-            
+
             healthStore.execute(query)
         }
     }
@@ -195,21 +191,20 @@ class HealthKitManager: ObservableObject {
         guard let distanceType = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) else {
             return nil
         }
-        
+
         let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
-        let query = HKStatisticsQuery(quantityType: distanceType, quantitySamplePredicate: predicate, options: .cumulativeSum)
-        
+
         return try await withCheckedThrowingContinuation { continuation in
-            query.initialResultsHandler = { _, result, error in
+            let query = HKStatisticsQuery(quantityType: distanceType, quantitySamplePredicate: predicate, options: .cumulativeSum) { (query: HKStatisticsQuery, result: HKStatistics?, error: Error?) in
                 if let error = error {
                     continuation.resume(throwing: error)
                     return
                 }
-                
-                let distance = result?.sumQuantity()?.doubleValue(for: .meterUnit(with: .kilo))
+
+                let distance = result?.sumQuantity()?.doubleValue(for: HKUnit.meterUnit(with: .kilo))
                 continuation.resume(returning: distance)
             }
-            
+
             healthStore.execute(query)
         }
     }
@@ -219,21 +214,20 @@ class HealthKitManager: ObservableObject {
         guard let flightsType = HKQuantityType.quantityType(forIdentifier: .flightsClimbed) else {
             return nil
         }
-        
+
         let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
-        let query = HKStatisticsQuery(quantityType: flightsType, quantitySamplePredicate: predicate, options: .cumulativeSum)
-        
+
         return try await withCheckedThrowingContinuation { continuation in
-            query.initialResultsHandler = { _, result, error in
+            let query = HKStatisticsQuery(quantityType: flightsType, quantitySamplePredicate: predicate, options: .cumulativeSum) { (query: HKStatisticsQuery, result: HKStatistics?, error: Error?) in
                 if let error = error {
                     continuation.resume(throwing: error)
                     return
                 }
-                
-                let flights = result?.sumQuantity()?.doubleValue(for: .count())
+
+                let flights = result?.sumQuantity()?.doubleValue(for: HKUnit.count())
                 continuation.resume(returning: flights.map { Int($0) })
             }
-            
+
             healthStore.execute(query)
         }
     }
