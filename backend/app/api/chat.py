@@ -367,3 +367,85 @@ async def get_chat_history(
             })
     
     return history
+
+
+@router.post("/voice")
+async def send_voice_message(
+    audio: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Send a voice message for transcription and processing.
+
+    This endpoint receives an audio file, transcribes it to text,
+    and then processes it through the chat agent system.
+
+    Args:
+        audio: Audio file (m4a, mp3, wav, etc.)
+        user_id: Current user ID from token
+
+    Returns:
+        ChatMessage: Response with transcription and AI analysis
+    """
+    try:
+        # Read audio file
+        audio_data = await audio.read()
+
+        # TODO: Implement speech-to-text transcription
+        # Options:
+        # 1. OpenAI Whisper API: https://platform.openai.com/docs/guides/speech-to-text
+        # 2. Local Whisper model
+        # 3. Cloud providers (Google Speech-to-Text, Azure, etc.)
+
+        # For now, return a placeholder response
+        transcribed_text = "[Voice transcription not yet implemented. Please configure a speech-to-text service.]"
+
+        # Initialize memory manager for user
+        memory_manager = MemoryManager(storage, user_id)
+
+        # Initialize orchestrator with LLM provider
+        llm_provider = _get_llm_provider()
+        orchestrator = AgentOrchestrator(
+            memory_manager, llm_provider=llm_provider, api_mode=settings.llm_api_mode
+        )
+
+        # Process transcribed message through agent system
+        agent_response = await orchestrator.process_message(
+            user_message=transcribed_text,
+            user_id=user_id,
+            additional_context={"audio_duration": len(audio_data)}
+        )
+
+        # Save chat to log
+        session_id = str(uuid.uuid4())
+        await memory_manager.save_chat_log(session_id, [
+            {
+                "role": "user",
+                "content": transcribed_text,
+                "timestamp": datetime.now().isoformat(),
+                "type": "voice",
+                "audio_size": len(audio_data)
+            },
+            {
+                "role": "assistant",
+                "content": agent_response["response"],
+                "timestamp": datetime.now().isoformat(),
+                "agent": agent_response.get("agent", "unknown"),
+                "routing": agent_response.get("routing", {})
+            }
+        ])
+
+        # Return response
+        response = ChatMessage(
+            role="assistant",
+            content=agent_response["response"],
+            timestamp=datetime.now()
+        )
+
+        return response
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process voice message: {str(e)}"
+        )
