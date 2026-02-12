@@ -23,6 +23,9 @@ aiofiles==23.2.1
 # HTTP Client (for LLM API, Feishu API, Web Search)
 httpx==0.26.0
 
+# AI/ML Services
+openai==1.12.0  # For Whisper API (speech-to-text) and GPT models
+
 # Development & Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1

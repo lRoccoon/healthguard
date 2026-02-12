@@ -113,15 +113,26 @@ class ChatViewModel: ObservableObject {
         )
         messages.append(audioMessage)
 
-        // TODO: Send to backend for transcription and processing
-        // For now, just show a placeholder response
+        // Send to backend for transcription and processing
         Task {
             isLoading = true
+            errorMessage = nil
+
             do {
-                // In the future, implement voice message upload to backend
-                // let response = try await apiClient.sendVoiceMessage(audioData)
-                // For now, show error that voice is not yet supported
-                errorMessage = "Voice messages will be supported in a future update"
+                // Get filename from recording URL
+                let filename = recordingURL.lastPathComponent
+
+                // Send voice message to backend
+                let responseMessage = try await apiClient.sendVoiceMessage(
+                    audioData: audioData,
+                    filename: filename
+                )
+
+                // Add assistant response
+                messages.append(responseMessage)
+                isLoading = false
+            } catch {
+                errorMessage = "Failed to send voice message: \(error.localizedDescription)"
                 isLoading = false
             }
         }

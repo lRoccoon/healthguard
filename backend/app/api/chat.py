@@ -18,6 +18,7 @@ from ..storage import LocalStorage
 from ..config import settings
 from ..agents.orchestrator import AgentOrchestrator
 from ..llm.factory import create_llm_provider
+from ..services.transcription import get_transcription_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -391,14 +392,34 @@ async def send_voice_message(
         # Read audio file
         audio_data = await audio.read()
 
-        # TODO: Implement speech-to-text transcription
-        # Options:
-        # 1. OpenAI Whisper API: https://platform.openai.com/docs/guides/speech-to-text
-        # 2. Local Whisper model
-        # 3. Cloud providers (Google Speech-to-Text, Azure, etc.)
+        # Get transcription service
+        transcription_service = get_transcription_service()
 
-        # For now, return a placeholder response
-        transcribed_text = "[Voice transcription not yet implemented. Please configure a speech-to-text service.]"
+        # Check if transcription is configured
+        if not transcription_service.is_configured():
+            # Fallback message if OpenAI API key is not configured
+            transcribed_text = "[Voice transcription requires OpenAI API key. Please set OPENAI_API_KEY in environment variables.]"
+            transcription_success = False
+        else:
+            try:
+                # Transcribe audio using Whisper
+                transcription_result = await transcription_service.transcribe_audio(
+                    audio_data=audio_data,
+                    filename=audio.filename or "audio.m4a",
+                    language=None  # Auto-detect language
+                )
+
+                transcribed_text = transcription_result["text"]
+                transcription_success = True
+
+                # Log transcription details
+                print(f"Voice transcribed: {len(transcribed_text)} chars, language: {transcription_result.get('language')}, duration: {transcription_result.get('duration')}s")
+
+            except Exception as e:
+                # If transcription fails, use error message but continue processing
+                transcribed_text = f"[Voice transcription failed: {str(e)}]"
+                transcription_success = False
+                print(f"Transcription error: {e}")
 
         # Initialize memory manager for user
         memory_manager = MemoryManager(storage, user_id)
@@ -413,7 +434,11 @@ async def send_voice_message(
         agent_response = await orchestrator.process_message(
             user_message=transcribed_text,
             user_id=user_id,
-            additional_context={"audio_duration": len(audio_data)}
+            additional_context={
+                "audio_size": len(audio_data),
+                "transcription_success": transcription_success,
+                "audio_filename": audio.filename
+            }
         )
 
         # Save chat to log

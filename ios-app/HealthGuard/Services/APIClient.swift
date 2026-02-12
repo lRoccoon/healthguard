@@ -97,12 +97,50 @@ class APIClient {
     }
     
     // MARK: - Chat Endpoints
-    
+
     func sendMessage(_ message: Message) async throws -> Message {
         let request = MessageRequest(message: message)
         return try await post(endpoint: "/chat/message", body: request, authenticated: true)
     }
-    
+
+    func sendVoiceMessage(audioData: Data, filename: String = "audio.m4a") async throws -> Message {
+        let url = baseURL.appendingPathComponent("/chat/voice")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        // Create multipart form data
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+
+        // Add audio file
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"audio\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: audio/m4a\r\n\r\n".data(using: .utf8)!)
+        body.append(audioData)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        request.httpBody = body
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+
+        return try decoder.decode(Message.self, from: data)
+    }
+
     // MARK: - Health Endpoints
     
     func syncHealthData(_ healthData: HealthData) async throws {
