@@ -108,49 +108,48 @@ async def get_current_user_id(
 # User storage - using persistent file-based storage
 from ..storage.user_storage import get_user_storage
 import uuid
-import asyncio
 
 
-def get_user_from_db(user_id: str) -> Optional[dict]:
+async def get_user_from_db(user_id: str) -> Optional[dict]:
     """Get user from database by ID."""
     try:
-        return asyncio.run(get_user_storage().get_user(user_id))
+        return await get_user_storage().get_user(user_id)
     except Exception as e:
         print(f"Error getting user {user_id}: {e}")
         return None
 
 
-def get_user_by_username(username: str) -> Optional[dict]:
+async def get_user_by_username(username: str) -> Optional[dict]:
     """Get user from database by username."""
     try:
-        return asyncio.run(get_user_storage().get_user_by_username(username))
+        return await get_user_storage().get_user_by_username(username)
     except Exception as e:
         print(f"Error getting user by username {username}: {e}")
         return None
 
 
-def create_user_in_db(username: str, hashed_password: str, email: Optional[str] = None) -> dict:
+async def create_user_in_db(username: str, hashed_password: str, email: Optional[str] = None) -> dict:
     """Create a new user in database."""
     try:
         user_id = str(uuid.uuid4())
-        return asyncio.run(get_user_storage().create_user(user_id, username, hashed_password, email))
+        return await get_user_storage().create_user(user_id, username, hashed_password, email)
     except Exception as e:
         print(f"Error creating user {username}: {e}")
         raise
 
 
-def authenticate_user(username: str, password: str) -> Optional[dict]:
+async def authenticate_user(username: str, password: str) -> Optional[dict]:
     """
     Authenticate a user by username and password.
-    
+
     Args:
         username: Username
         password: Plain text password
-        
+
     Returns:
         Optional[dict]: User data if authenticated, None otherwise
     """
-    user = get_user_by_username(username)
+    user = await get_user_by_username(username)
     if not user:
         return None
     if not verify_password(password, user["hashed_password"]):
