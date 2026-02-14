@@ -4,8 +4,10 @@ import Combine
 
 /// HealthKit Manager - Handles all HealthKit data access and permissions
 class HealthKitManager: ObservableObject {
+    static let shared = HealthKitManager()
+
     private let healthStore = HKHealthStore()
-    
+
     @Published var isAuthorized = false
     @Published var authorizationError: String?
     
@@ -19,7 +21,7 @@ class HealthKitManager: ObservableObject {
         HKObjectType.quantityType(forIdentifier: .flightsClimbed)!
     ]
     
-    init() {
+    private init() {
         checkAuthorizationStatus()
     }
     

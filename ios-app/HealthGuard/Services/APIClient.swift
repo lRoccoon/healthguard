@@ -103,6 +103,10 @@ class APIClient {
         return try await post(endpoint: "/chat/message", body: request, authenticated: true)
     }
 
+    func getChatHistory(days: Int = 7) async throws -> [[String: Any]] {
+        return try await get(endpoint: "/chat/history?days=\(days)", authenticated: true)
+    }
+
     func sendVoiceMessage(audioData: Data, filename: String = "audio.m4a") async throws -> Message {
         let url = baseURL.appendingPathComponent("/chat/voice")
         var request = URLRequest(url: url)

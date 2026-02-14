@@ -65,9 +65,47 @@ class ChatViewModel: ObservableObject {
 
     func loadChatHistory() async {
         do {
-            // TODO: Load chat history from backend
-            // let history = try await apiClient.getChatHistory()
-            // Process and display history
+            // Load chat history from backend
+            let history = try await apiClient.getChatHistory()
+
+            // Process and display history - merge with existing messages
+            // The history comes in as an array of session dictionaries
+            for session in history {
+                if let messagesArray = session["messages"] as? [[String: Any]] {
+                    for messageDict in messagesArray {
+                        if let role = messageDict["role"] as? String,
+                           let content = messageDict["content"] as? String {
+                            let messageRole: MessageRole
+                            switch role {
+                            case "user":
+                                messageRole = .user
+                            case "assistant":
+                                messageRole = .assistant
+                            case "system":
+                                messageRole = .system
+                            default:
+                                continue
+                            }
+
+                            let timestamp: Date
+                            if let timestampStr = messageDict["timestamp"] as? String {
+                                let formatter = ISO8601DateFormatter()
+                                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                                timestamp = formatter.date(from: timestampStr) ?? Date()
+                            } else {
+                                timestamp = Date()
+                            }
+
+                            let message = Message(
+                                role: messageRole,
+                                content: content,
+                                timestamp: timestamp
+                            )
+                            messages.append(message)
+                        }
+                    }
+                }
+            }
         } catch {
             errorMessage = "Failed to load chat history: \(error.localizedDescription)"
         }
