@@ -104,7 +104,29 @@ class APIClient {
     }
 
     func getChatHistory(days: Int = 7) async throws -> [[String: Any]] {
-        return try await get(endpoint: "/chat/history?days=\(days)", authenticated: true)
+        var request = URLRequest(url: baseURL.appendingPathComponent("/chat/history?days=\(days)"))
+        request.httpMethod = "GET"
+
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+
+        // Manually decode as untyped JSON since we need [[String: Any]]
+        guard let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw APIError.decodingError(NSError(domain: "APIClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode chat history"]))
+        }
+
+        return jsonArray
     }
 
     func sendVoiceMessage(audioData: Data, filename: String = "audio.m4a") async throws -> Message {
