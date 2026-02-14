@@ -11,12 +11,82 @@ class ChatViewModel: ObservableObject {
     @Published var showImagePicker: Bool = false
     @Published var showCamera: Bool = false
     @Published var isRecording: Bool = false
+    @Published var currentSessionId: String?
+    @Published var sessions: [SessionMetadata] = []
 
     private var apiClient = APIClient.shared
     private var voiceRecorder = VoiceRecorder.shared
 
     init() {
-        // Load recent messages if needed
+        // Load last active session on init
+        Task {
+            await loadLastActiveSession()
+        }
+    }
+
+    func loadLastActiveSession() async {
+        do {
+            guard let session = try await apiClient.getLastActiveSession() else {
+                // No previous session, start fresh
+                return
+            }
+
+            // Set current session ID
+            currentSessionId = session.sessionId
+
+            // Convert message dicts to Message objects
+            var loadedMessages: [Message] = []
+            for messageDict in session.messages {
+                if let role = messageDict["role"]?.stringValue,
+                   let content = messageDict["content"]?.stringValue {
+                    let messageRole: MessageRole
+                    switch role {
+                    case "user":
+                        messageRole = .user
+                    case "assistant":
+                        messageRole = .assistant
+                    case "system":
+                        messageRole = .system
+                    default:
+                        continue
+                    }
+
+                    let timestamp: Date
+                    if let timestampStr = messageDict["timestamp"]?.stringValue {
+                        let formatter = ISO8601DateFormatter()
+                        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                        timestamp = formatter.date(from: timestampStr) ?? Date()
+                    } else {
+                        timestamp = Date()
+                    }
+
+                    let message = Message(
+                        role: messageRole,
+                        content: content,
+                        timestamp: timestamp
+                    )
+                    loadedMessages.append(message)
+                }
+            }
+
+            messages = loadedMessages
+        } catch {
+            // Silently fail - user can start a new session
+            print("Failed to load last session: \(error.localizedDescription)")
+        }
+    }
+
+    func startNewSession() {
+        messages.removeAll()
+        currentSessionId = nil
+    }
+
+    func loadSessions() async {
+        do {
+            sessions = try await apiClient.listSessions(limit: 20)
+        } catch {
+            errorMessage = "Failed to load sessions: \(error.localizedDescription)"
+        }
     }
 
     func sendMessage() async {
@@ -48,11 +118,14 @@ class ChatViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            // Send message to backend
-            let responseMessage = try await apiClient.sendMessage(userMessage)
+            // Send message to backend with current session ID
+            let responseMessage = try await apiClient.sendMessage(userMessage, sessionId: currentSessionId)
 
             // Add assistant response
             messages.append(responseMessage)
+
+            // If this was a new session, we should get the session_id back
+            // For now, we'll rely on the backend to handle session continuity
 
             // Clear selected image after successful send
             selectedImage = nil

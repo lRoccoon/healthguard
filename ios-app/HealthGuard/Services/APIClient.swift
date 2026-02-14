@@ -98,9 +98,13 @@ class APIClient {
     
     // MARK: - Chat Endpoints
 
-    func sendMessage(_ message: Message) async throws -> Message {
+    func sendMessage(_ message: Message, sessionId: String? = nil) async throws -> Message {
         let request = MessageRequest(message: message)
-        return try await post(endpoint: "/chat/message", body: request, authenticated: true)
+        var endpoint = "/chat/message"
+        if let sessionId = sessionId {
+            endpoint += "?session_id=\(sessionId)"
+        }
+        return try await post(endpoint: endpoint, body: request, authenticated: true)
     }
 
     func getChatHistory(days: Int = 7) async throws -> [[String: Any]] {
@@ -127,6 +131,80 @@ class APIClient {
         }
 
         return jsonArray
+    }
+
+    func getLastActiveSession() async throws -> Session? {
+        var request = URLRequest(url: baseURL.appendingPathComponent("/chat/sessions/last/active"))
+        request.httpMethod = "GET"
+
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+
+        // Check if response is null/empty
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           json["session"] == nil {
+            return nil
+        }
+
+        return try decoder.decode(Session.self, from: data)
+    }
+
+    func listSessions(limit: Int = 20) async throws -> [SessionMetadata] {
+        var request = URLRequest(url: baseURL.appendingPathComponent("/chat/sessions?limit=\(limit)"))
+        request.httpMethod = "GET"
+
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+
+        struct SessionsResponse: Codable {
+            let sessions: [SessionMetadata]
+        }
+
+        let sessionsResponse = try decoder.decode(SessionsResponse.self, from: data)
+        return sessionsResponse.sessions
+    }
+
+    func getSession(sessionId: String) async throws -> Session {
+        var request = URLRequest(url: baseURL.appendingPathComponent("/chat/sessions/\(sessionId)"))
+        request.httpMethod = "GET"
+
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+
+        return try decoder.decode(Session.self, from: data)
     }
 
     func sendVoiceMessage(audioData: Data, filename: String = "audio.m4a") async throws -> Message {
