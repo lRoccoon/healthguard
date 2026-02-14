@@ -93,7 +93,7 @@ class APIClient {
     }
     
     func getCurrentUser() async throws -> User {
-        return try await get(endpoint: "/auth/me")
+        return try await get(endpoint: "/auth/me", authenticated: true)
     }
     
     // MARK: - Chat Endpoints
