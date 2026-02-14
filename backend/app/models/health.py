@@ -51,17 +51,25 @@ class MedicalRecord(BaseModel):
     filename: str
     file_type: str  # image, pdf
     upload_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
     # OCR and analysis results
     extracted_data: Optional[dict] = None
     analysis: Optional[str] = None
 
 
+class Attachment(BaseModel):
+    """Message attachment model."""
+    type: str  # image, audio, file
+    url: Optional[str] = None
+    data: Optional[str] = None  # base64 encoded data
+
+
 class ChatMessage(BaseModel):
     """Chat message model."""
+    id: Optional[str] = None  # UUID string, generated if not provided
     role: str  # user, assistant, system
     content: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
     # Optional attachments
-    attachments: Optional[List[dict]] = None
+    attachments: Optional[List[Attachment]] = None

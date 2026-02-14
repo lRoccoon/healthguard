@@ -93,6 +93,7 @@ async def send_message(
         ])
 
         response = ChatMessage(
+            id=str(uuid.uuid4()),
             role="assistant",
             content=agent_response["response"],
             timestamp=datetime.now()
@@ -251,6 +252,7 @@ async def send_message_with_image(
         ])
 
         response = ChatMessage(
+            id=str(uuid.uuid4()),
             role="assistant",
             content=agent_response["response"],
             timestamp=datetime.now()
@@ -462,6 +464,7 @@ async def send_voice_message(
 
         # Return response
         response = ChatMessage(
+            id=str(uuid.uuid4()),
             role="assistant",
             content=agent_response["response"],
             timestamp=datetime.now()
