@@ -4,11 +4,13 @@ Agent Orchestrator - Coordinates between Router Agent and Specialist Agents.
 
 import logging
 from typing import Dict, Any, Optional, AsyncGenerator
+from datetime import datetime, date
 from .router_agent import RouterAgent
 from .diet_agent import DietAgent
 from .fitness_agent import FitnessAgent
 from .medical_agent import MedicalAgent
 from ..core import MemoryManager
+from ..core.memory_consolidator import MemoryConsolidator
 from ..llm.base import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -26,13 +28,14 @@ class AgentOrchestrator:
                  api_mode: str = "chat"):
         """
         Initialize orchestrator with agent instances.
-        
+
         Args:
             memory_manager: MemoryManager instance for user context
             llm_provider: Optional LLM provider for all agents
             api_mode: "chat" or "responses" API mode
         """
         self.memory_manager = memory_manager
+        self.llm_provider = llm_provider
         self.router = RouterAgent()
         self.diet_agent = DietAgent()
         self.fitness_agent = FitnessAgent()
@@ -67,12 +70,25 @@ class AgentOrchestrator:
         )
 
         try:
-            # Get user context from memory
+            # Get user context from memory including recent consolidated memories
+            consolidator = MemoryConsolidator(
+                self.memory_manager.storage,
+                self.memory_manager.user_id,
+                self.llm_provider
+            )
+
+            # Load recent memories (last 7 days)
+            recent_memories = await consolidator.load_recent_memories(days=7)
+
+            # Get user context from memory manager
             user_context = await self.memory_manager.get_user_context(days_back=7)
+
+            # Combine contexts
+            combined_context = recent_memories + "\n\n" + user_context if recent_memories else user_context
 
             # Combine with additional context
             context = {
-                "user_history": user_context,
+                "user_history": combined_context,
                 **(additional_context or {})
             }
 
@@ -137,12 +153,25 @@ class AgentOrchestrator:
         )
 
         try:
-            # Get user context from memory (blocking - must complete before streaming)
+            # Get user context from memory including recent consolidated memories
+            consolidator = MemoryConsolidator(
+                self.memory_manager.storage,
+                self.memory_manager.user_id,
+                self.llm_provider
+            )
+
+            # Load recent memories (last 7 days)
+            recent_memories = await consolidator.load_recent_memories(days=7)
+
+            # Get user context from memory manager
             user_context = await self.memory_manager.get_user_context(days_back=7)
+
+            # Combine contexts
+            combined_context = recent_memories + "\n\n" + user_context if recent_memories else user_context
 
             # Combine with additional context
             context = {
-                "user_history": user_context,
+                "user_history": combined_context,
                 **(additional_context or {})
             }
 
