@@ -55,6 +55,44 @@ async def register(user_data: UserCreate):
         email=user_data.email
     )
 
+    # Create welcome session with initialization message
+    from ..core import MemoryManager
+    from uuid import uuid4
+
+    session_id = str(uuid4())
+    memory_manager = MemoryManager(storage, user["user_id"])
+
+    # Create welcome message
+    welcome_content = """👋 你好！欢迎来到 HealthGuard AI！
+
+我是你的健康助理，专门帮助你管理胰岛素抵抗。让我先了解一下你：
+
+1. 你希望我以什么样的方式与你交流？（比如：专业医生、温暖的朋友、严格的教练等）
+2. 你的主要健康目标是什么？
+3. 你更喜欢使用中文还是英文？
+
+请随时告诉我你的需求，我会根据你的偏好调整我的回应方式！"""
+
+    welcome_messages = [
+        {
+            "role": "assistant",
+            "content": welcome_content,
+            "timestamp": datetime.now().isoformat(),
+            "agent": "system",
+            "is_welcome": True
+        }
+    ]
+
+    session_metadata = {
+        'session_id': session_id,
+        'user_id': user["user_id"],
+        'created_at': datetime.now().isoformat(),
+        'title': "欢迎初始化",
+        'is_onboarding': True
+    }
+
+    await memory_manager.save_chat_log(session_id, welcome_messages, session_metadata)
+
     # Remove sensitive data before returning
     user_response = User(**{k: v for k, v in user.items() if k != 'hashed_password'})
 

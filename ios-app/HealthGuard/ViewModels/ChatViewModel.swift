@@ -13,6 +13,7 @@ class ChatViewModel: ObservableObject {
     @Published var isRecording: Bool = false
     @Published var currentSessionId: String?
     @Published var sessions: [SessionMetadata] = []
+    @Published var streamingStatus: String?  // Show current streaming phase
 
     private var apiClient = APIClient.shared
     private var voiceRecorder = VoiceRecorder.shared
@@ -116,24 +117,65 @@ class ChatViewModel: ObservableObject {
 
         isLoading = true
         errorMessage = nil
+        streamingStatus = "正在分析意图..."
 
-        do {
-            // Send message to backend with current session ID
-            let responseMessage = try await apiClient.sendMessage(userMessage, sessionId: currentSessionId)
+        // Use streaming for better UX
+        var accumulatedContent = ""
+        let assistantMessageId = UUID()
 
-            // Add assistant response
-            messages.append(responseMessage)
+        apiClient.sendMessageStreaming(
+            userMessage,
+            sessionId: currentSessionId,
+            onRouting: { [weak self] agent, confidence, reason in
+                guard let self = self else { return }
+                Task { @MainActor in
+                    self.streamingStatus = "正在深度思考..."
+                }
+            },
+            onContent: { [weak self] content in
+                guard let self = self else { return }
+                Task { @MainActor in
+                    accumulatedContent += content
+                    self.streamingStatus = "正在回复..."
 
-            // If this was a new session, we should get the session_id back
-            // For now, we'll rely on the backend to handle session continuity
-
-            // Clear selected image after successful send
-            selectedImage = nil
-            isLoading = false
-        } catch {
-            errorMessage = "Failed to send message: \(error.localizedDescription)"
-            isLoading = false
-        }
+                    // Update or add assistant message
+                    if let index = self.messages.firstIndex(where: { $0.id == assistantMessageId }) {
+                        self.messages[index] = Message(
+                            id: assistantMessageId,
+                            role: .assistant,
+                            content: accumulatedContent,
+                            timestamp: Date()
+                        )
+                    } else {
+                        self.messages.append(Message(
+                            id: assistantMessageId,
+                            role: .assistant,
+                            content: accumulatedContent,
+                            timestamp: Date()
+                        ))
+                    }
+                }
+            },
+            onComplete: { [weak self] sessionId in
+                guard let self = self else { return }
+                Task { @MainActor in
+                    if let sessionId = sessionId {
+                        self.currentSessionId = sessionId
+                    }
+                    self.isLoading = false
+                    self.streamingStatus = nil
+                    self.selectedImage = nil
+                }
+            },
+            onError: { [weak self] error in
+                guard let self = self else { return }
+                Task { @MainActor in
+                    self.errorMessage = "发送失败: \(error)"
+                    self.isLoading = false
+                    self.streamingStatus = nil
+                }
+            }
+        )
     }
 
     func loadChatHistory() async {

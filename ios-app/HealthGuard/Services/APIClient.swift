@@ -107,6 +107,93 @@ class APIClient {
         return try await post(endpoint: endpoint, body: request, authenticated: true)
     }
 
+    func sendMessageStreaming(
+        _ message: Message,
+        sessionId: String? = nil,
+        onRouting: @escaping (String, Double?, String) -> Void,
+        onContent: @escaping (String) -> Void,
+        onComplete: @escaping (String?) -> Void,
+        onError: @escaping (String) -> Void
+    ) {
+        var urlString = baseURL.appendingPathComponent("/chat/message").absoluteString
+        if let sessionId = sessionId {
+            urlString += "?session_id=\(sessionId)&stream=true"
+        } else {
+            urlString += "?stream=true"
+        }
+
+        guard let url = URL(string: urlString) else {
+            onError("Invalid URL")
+            return
+        }
+
+        var headers: [String: String] = [
+            "Content-Type": "application/json"
+        ]
+
+        if let token = authToken {
+            headers["Authorization"] = "Bearer \(token)"
+        }
+
+        // Create request body
+        let requestBody = MessageRequest(message: message)
+        guard let bodyData = try? encoder.encode(requestBody) else {
+            onError("Failed to encode message")
+            return
+        }
+
+        // Create POST request for streaming
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = bodyData
+        request.timeoutInterval = 300 // 5 minutes for long responses
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                DispatchQueue.main.async {
+                    onError(error.localizedDescription)
+                }
+                return
+            }
+
+            guard let data = data,
+                  let text = String(data: data, encoding: .utf8) else {
+                DispatchQueue.main.async {
+                    onError("Failed to read response")
+                }
+                return
+            }
+
+            // Parse SSE format
+            let lines = text.components(separatedBy: "\n")
+
+            for line in lines {
+                if line.hasPrefix("data: ") {
+                    let jsonString = String(line.dropFirst(6))
+                    if let event = StreamingEvent.parse(from: jsonString) {
+                        DispatchQueue.main.async {
+                            switch event {
+                            case .routing(let agent, let confidence, let reason):
+                                onRouting(agent, confidence, reason)
+                            case .content(let content):
+                                onContent(content)
+                            case .done(let sessionId):
+                                onComplete(sessionId)
+                            case .error(let errorMsg):
+                                onError(errorMsg)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        task.resume()
+    }
+
     func getChatHistory(days: Int = 7) async throws -> [[String: Any]] {
         var request = URLRequest(url: baseURL.appendingPathComponent("/chat/history?days=\(days)"))
         request.httpMethod = "GET"
