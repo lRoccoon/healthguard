@@ -39,6 +39,10 @@ class MemoryManager:
         """Get path for chat log file."""
         return f"{self.base_path}/raw_chats/{session_id}.json"
 
+    def _get_session_metadata_path(self, session_id: str) -> str:
+        """Get path for session metadata file."""
+        return f"{self.base_path}/raw_chats/{session_id}.meta.json"
+
     async def create_daily_log(self, target_date: date, content: Dict[str, Any]) -> bool:
         """
         Create or update daily log for a specific date.
@@ -157,23 +161,67 @@ class MemoryManager:
     async def save_chat_log(
         self,
         session_id: str,
-        messages: List[Dict[str, Any]]
+        messages: List[Dict[str, Any]],
+        session_metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
-        Save raw chat conversation log.
-        
+        Save raw chat conversation log with optional metadata.
+
         Args:
             session_id: Session identifier
             messages: List of message objects
-            
+            session_metadata: Optional session metadata (title, created_at, etc.)
+
         Returns:
             bool: True if successful
         """
         import json
-        
+
         path = self._get_chat_log_path(session_id)
+
+        # Check if session already exists to update metadata
+        existing_metadata = None
+        if await self.storage.exists(path):
+            # Load existing messages to append new ones
+            existing_content = await self.storage.load(path)
+            if existing_content:
+                existing_messages = json.loads(existing_content.decode('utf-8'))
+                messages = existing_messages + messages
+
+            # Load existing metadata
+            meta_path = self._get_session_metadata_path(session_id)
+            if await self.storage.exists(meta_path):
+                meta_content = await self.storage.load(meta_path)
+                if meta_content:
+                    existing_metadata = json.loads(meta_content.decode('utf-8'))
+
+        # Save messages
         content = json.dumps(messages, indent=2, ensure_ascii=False)
-        return await self.storage.save(path, content)
+        result = await self.storage.save(path, content)
+
+        # Save or update metadata
+        if session_metadata or existing_metadata:
+            metadata = existing_metadata or {}
+            if session_metadata:
+                metadata.update(session_metadata)
+
+            # Update last_message_at and message_count
+            metadata['last_message_at'] = datetime.now().isoformat()
+            metadata['message_count'] = len(messages)
+
+            # Generate title from first user message if not set
+            if not metadata.get('title') and messages:
+                for msg in messages:
+                    if msg.get('role') == 'user':
+                        content_preview = msg.get('content', '')[:50]
+                        metadata['title'] = content_preview + ('...' if len(msg.get('content', '')) > 50 else '')
+                        break
+
+            meta_path = self._get_session_metadata_path(session_id)
+            meta_content = json.dumps(metadata, indent=2, ensure_ascii=False)
+            await self.storage.save(meta_path, meta_content)
+
+        return result
 
     async def search_memories(
         self,
@@ -258,17 +306,120 @@ class MemoryManager:
     async def list_medical_records(self) -> List[Dict[str, Any]]:
         """
         List all medical records for the user.
-        
+
         Returns:
             List of medical record metadata
         """
         path = f"{self.base_path}/medical/records"
         files = await self.storage.list(path, recursive=False)
-        
+
         records = []
         for file_path in files:
             if not file_path.endswith('_summary.md'):
                 metadata = await self.storage.get_metadata(file_path)
                 records.append(metadata)
-        
+
         return records
+
+    async def get_session_metadata(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get metadata for a specific session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Optional[Dict]: Session metadata or None if not found
+        """
+        import json
+
+        meta_path = self._get_session_metadata_path(session_id)
+        if not await self.storage.exists(meta_path):
+            return None
+
+        content = await self.storage.load(meta_path)
+        if content:
+            return json.loads(content.decode('utf-8'))
+        return None
+
+    async def list_sessions(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        List all chat sessions for the user, sorted by most recent.
+
+        Args:
+            limit: Optional limit on number of sessions to return
+
+        Returns:
+            List of session metadata dicts
+        """
+        import json
+
+        chat_path = f"{self.base_path}/raw_chats"
+        files = await self.storage.list(chat_path, pattern="*.meta.json")
+
+        sessions = []
+        for meta_file in files:
+            content = await self.storage.load(meta_file)
+            if content:
+                metadata = json.loads(content.decode('utf-8'))
+                sessions.append(metadata)
+
+        # Sort by last_message_at, most recent first
+        sessions.sort(
+            key=lambda s: s.get('last_message_at', s.get('created_at', '')),
+            reverse=True
+        )
+
+        if limit:
+            sessions = sessions[:limit]
+
+        return sessions
+
+    async def get_session_with_messages(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a session with its messages.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Optional[Dict]: Session with metadata and messages
+        """
+        import json
+
+        # Get messages
+        msg_path = self._get_chat_log_path(session_id)
+        if not await self.storage.exists(msg_path):
+            return None
+
+        msg_content = await self.storage.load(msg_path)
+        if not msg_content:
+            return None
+
+        messages = json.loads(msg_content.decode('utf-8'))
+
+        # Get metadata
+        metadata = await self.get_session_metadata(session_id)
+
+        return {
+            'session_id': session_id,
+            'metadata': metadata or {},
+            'messages': messages
+        }
+
+    async def get_last_active_session(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recently active session with its messages.
+
+        Returns:
+            Optional[Dict]: Session with metadata and messages, or None
+        """
+        sessions = await self.list_sessions(limit=1)
+        if not sessions:
+            return None
+
+        session_id = sessions[0].get('session_id')
+        if not session_id:
+            return None
+
+        return await self.get_session_with_messages(session_id)

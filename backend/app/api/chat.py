@@ -44,7 +44,8 @@ def _get_llm_provider():
 async def send_message(
     message: ChatMessage,
     user_id: str = Depends(get_current_user_id),
-    stream: bool = Query(False, description="Enable streaming output")
+    stream: bool = Query(False, description="Enable streaming output"),
+    session_id: Optional[str] = Query(None, description="Session ID to continue conversation")
 ):
     """
     Send a chat message and get AI response.
@@ -53,6 +54,7 @@ async def send_message(
         message: Chat message from user
         user_id: Current user ID from token
         stream: Enable Server-Sent Events streaming
+        session_id: Optional session ID to continue existing conversation
 
     Returns:
         ChatMessage (stream=false) or StreamingResponse (stream=true)
@@ -66,6 +68,10 @@ async def send_message(
         memory_manager, llm_provider=llm_provider, api_mode=settings.llm_api_mode
     )
 
+    # Use provided session_id or create new one
+    if not session_id:
+        session_id = str(uuid.uuid4())
+
     # Non-streaming mode (default, backward compatible)
     if not stream:
         # Process message through agent system
@@ -75,8 +81,12 @@ async def send_message(
             additional_context={}
         )
 
-        # Save chat to log
-        session_id = str(uuid.uuid4())
+        # Save chat to log with metadata
+        session_metadata = {
+            'session_id': session_id,
+            'user_id': user_id,
+            'created_at': datetime.now().isoformat()
+        }
         await memory_manager.save_chat_log(session_id, [
             {
                 "role": message.role,
@@ -90,7 +100,7 @@ async def send_message(
                 "agent": agent_response.get("agent", "unknown"),
                 "routing": agent_response.get("routing", {})
             }
-        ])
+        ], session_metadata)
 
         response = ChatMessage(
             id=str(uuid.uuid4()),
@@ -123,11 +133,17 @@ async def send_message(
                         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
                     elif event["type"] == "done":
+                        # Include session_id in the done event
+                        event["session_id"] = session_id
                         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
                         # Save chat to log after streaming completes
                         try:
-                            session_id = str(uuid.uuid4())
+                            session_metadata = {
+                                'session_id': session_id,
+                                'user_id': user_id,
+                                'created_at': datetime.now().isoformat()
+                            }
                             await memory_manager.save_chat_log(session_id, [
                                 {
                                     "role": message.role,
@@ -141,7 +157,7 @@ async def send_message(
                                     "agent": routing_info.get("agent") if routing_info else "unknown",
                                     "routing": routing_info
                                 }
-                            ])
+                            ], session_metadata)
                         except Exception:
                             # Log saving failure shouldn't break the stream
                             pass
@@ -182,7 +198,8 @@ async def send_message_with_image(
     content: str = Form(...),
     images: Optional[List[UploadFile]] = File(None),
     user_id: str = Depends(get_current_user_id),
-    stream: bool = Form(False, description="Enable streaming output")
+    stream: bool = Form(False, description="Enable streaming output"),
+    session_id: Optional[str] = Form(None, description="Session ID to continue conversation")
 ):
     """
     Send a chat message with optional image attachments.
@@ -193,6 +210,7 @@ async def send_message_with_image(
         images: Optional image files to attach
         user_id: Current user ID from token
         stream: Enable Server-Sent Events streaming
+        session_id: Optional session ID to continue existing conversation
 
     Returns:
         ChatMessage (stream=false) or StreamingResponse (stream=true)
@@ -205,6 +223,10 @@ async def send_message_with_image(
     orchestrator = AgentOrchestrator(
         memory_manager, llm_provider=llm_provider, api_mode=settings.llm_api_mode
     )
+
+    # Use provided session_id or create new one
+    if not session_id:
+        session_id = str(uuid.uuid4())
 
     # Process images if provided
     additional_context = {}
@@ -233,8 +255,12 @@ async def send_message_with_image(
             additional_context=additional_context
         )
 
-        # Save chat to log
-        session_id = str(uuid.uuid4())
+        # Save chat to log with metadata
+        session_metadata = {
+            'session_id': session_id,
+            'user_id': user_id,
+            'created_at': datetime.now().isoformat()
+        }
         await memory_manager.save_chat_log(session_id, [
             {
                 "role": "user",
@@ -249,7 +275,7 @@ async def send_message_with_image(
                 "agent": agent_response.get("agent", "unknown"),
                 "routing": agent_response.get("routing", {})
             }
-        ])
+        ], session_metadata)
 
         response = ChatMessage(
             id=str(uuid.uuid4()),
@@ -282,11 +308,17 @@ async def send_message_with_image(
                         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
                     elif event["type"] == "done":
+                        # Include session_id in the done event
+                        event["session_id"] = session_id
                         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
                         # Save chat to log after streaming completes
                         try:
-                            session_id = str(uuid.uuid4())
+                            session_metadata = {
+                                'session_id': session_id,
+                                'user_id': user_id,
+                                'created_at': datetime.now().isoformat()
+                            }
                             await memory_manager.save_chat_log(session_id, [
                                 {
                                     "role": "user",
@@ -301,7 +333,7 @@ async def send_message_with_image(
                                     "agent": routing_info.get("agent") if routing_info else "unknown",
                                     "routing": routing_info
                                 }
-                            ])
+                            ], session_metadata)
                         except Exception:
                             # Log saving failure shouldn't break the stream
                             pass
@@ -445,6 +477,11 @@ async def send_voice_message(
 
         # Save chat to log
         session_id = str(uuid.uuid4())
+        session_metadata = {
+            'session_id': session_id,
+            'user_id': user_id,
+            'created_at': datetime.now().isoformat()
+        }
         await memory_manager.save_chat_log(session_id, [
             {
                 "role": "user",
@@ -460,7 +497,7 @@ async def send_voice_message(
                 "agent": agent_response.get("agent", "unknown"),
                 "routing": agent_response.get("routing", {})
             }
-        ])
+        ], session_metadata)
 
         # Return response
         response = ChatMessage(
@@ -477,3 +514,73 @@ async def send_voice_message(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process voice message: {str(e)}"
         )
+
+
+@router.get("/sessions")
+async def list_sessions(
+    user_id: str = Depends(get_current_user_id),
+    limit: int = Query(20, description="Maximum number of sessions to return")
+):
+    """
+    List all chat sessions for the current user.
+
+    Args:
+        user_id: Current user ID from token
+        limit: Maximum number of sessions to return
+
+    Returns:
+        List of session metadata
+    """
+    memory_manager = MemoryManager(storage, user_id)
+    sessions = await memory_manager.list_sessions(limit=limit)
+    return {"sessions": sessions}
+
+
+@router.get("/sessions/{session_id}")
+async def get_session(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Get a specific session with its messages.
+
+    Args:
+        session_id: Session identifier
+        user_id: Current user ID from token
+
+    Returns:
+        Session with metadata and messages
+    """
+    memory_manager = MemoryManager(storage, user_id)
+    session = await memory_manager.get_session_with_messages(session_id)
+
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found"
+        )
+
+    return session
+
+
+@router.get("/sessions/last/active")
+async def get_last_active_session(
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Get the most recently active session with its messages.
+    This is useful for restoring the last conversation on app launch.
+
+    Args:
+        user_id: Current user ID from token
+
+    Returns:
+        Session with metadata and messages, or None if no sessions exist
+    """
+    memory_manager = MemoryManager(storage, user_id)
+    session = await memory_manager.get_last_active_session()
+
+    if not session:
+        return {"session": None}
+
+    return session
