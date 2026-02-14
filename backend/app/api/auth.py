@@ -2,10 +2,11 @@
 Authentication API endpoints.
 """
 
-from fastapi import APIRouter, HTTPException, status, Depends
-from datetime import timedelta
+from fastapi import APIRouter, HTTPException, status, Depends, Form
+from datetime import timedelta, datetime
+from typing import Optional
 
-from ..models import UserCreate, Token, User
+from ..models import UserCreate, Token, User, UserUpdate
 from ..utils.auth import (
     authenticate_user,
     create_access_token,
@@ -16,8 +17,12 @@ from ..utils.auth import (
     get_user_from_db
 )
 from ..config import settings
+from ..storage import LocalStorage
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
+
+# Initialize storage
+storage = LocalStorage(settings.local_storage_path)
 
 
 @router.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
@@ -109,6 +114,92 @@ async def get_current_user(user_id: str = Depends(get_current_user_id)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
+
+    user_response = User(**{k: v for k, v in user.items() if k != 'hashed_password'})
+    return user_response
+
+
+@router.post("/onboarding")
+async def complete_onboarding(
+    agent_persona: str = Form(..., description="User-defined agent personality"),
+    health_goals: Optional[str] = Form(None, description="User's health goals"),
+    preferred_language: str = Form("zh", description="Preferred language (zh or en)"),
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Complete user onboarding by setting agent persona and preferences.
+
+    Args:
+        agent_persona: User-defined agent personality description
+        health_goals: Optional health goals
+        preferred_language: Preferred language (zh or en)
+        user_id: Current user ID from token
+
+    Returns:
+        Updated user object
+    """
+    user = await get_user_from_db(user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Update user data
+    user["onboarding_completed"] = True
+    user["agent_persona"] = agent_persona
+    user["preferred_language"] = preferred_language
+    if health_goals:
+        user["health_goals"] = health_goals
+    user["updated_at"] = datetime.now()
+
+    # Save to storage
+    user_path = f"users/{user_id}/profile.json"
+    import json
+    user_json = json.dumps(user, default=str, ensure_ascii=False, indent=2)
+    await storage.save(user_path, user_json)
+
+    user_response = User(**{k: v for k, v in user.items() if k != 'hashed_password'})
+    return user_response
+
+
+@router.put("/profile")
+async def update_profile(
+    profile_update: UserUpdate,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Update user profile information.
+
+    Args:
+        profile_update: Updated profile fields
+        user_id: Current user ID from token
+
+    Returns:
+        Updated user object
+    """
+    user = await get_user_from_db(user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Update fields if provided
+    if profile_update.email is not None:
+        user["email"] = profile_update.email
+    if profile_update.full_name is not None:
+        user["full_name"] = profile_update.full_name
+    if profile_update.password is not None:
+        user["hashed_password"] = get_password_hash(profile_update.password)
+
+    user["updated_at"] = datetime.now()
+
+    # Save to storage
+    user_path = f"users/{user_id}/profile.json"
+    import json
+    user_json = json.dumps(user, default=str, ensure_ascii=False, indent=2)
+    await storage.save(user_path, user_json)
 
     user_response = User(**{k: v for k, v in user.items() if k != 'hashed_password'})
     return user_response

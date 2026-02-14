@@ -32,11 +32,16 @@ class User(UserBase):
     created_at: datetime
     updated_at: datetime
     is_active: bool = True
-    
+
     # Health profile
     has_insulin_resistance: bool = True
     health_goals: Optional[str] = None
-    
+
+    # Onboarding
+    onboarding_completed: bool = False
+    agent_persona: Optional[str] = None  # User-defined agent personality
+    preferred_language: str = "zh"  # zh or en
+
     class Config:
         from_attributes = True
 

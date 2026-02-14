@@ -122,7 +122,10 @@ class UserStorage:
             "is_active": True,
             "has_insulin_resistance": True,
             "health_goals": None,
-            "full_name": None
+            "full_name": None,
+            "onboarding_completed": False,
+            "agent_persona": None,
+            "preferred_language": "zh"
         }
 
         # Save user file
