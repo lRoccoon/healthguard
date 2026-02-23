@@ -4,6 +4,7 @@ Tests the full message processing pipeline.
 """
 
 import pytest
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
@@ -19,10 +20,11 @@ def client():
 @pytest.fixture
 def auth_headers():
     """Create a test user and return auth headers."""
-    user = create_user_in_db(
+    # Run async function in sync context for fixture
+    user = asyncio.run(create_user_in_db(
         username="testuser_integration",
         hashed_password=get_password_hash("testpass123"),
-    )
+    ))
     token = create_access_token(
         data={"sub": user["user_id"], "username": user["username"]}
     )

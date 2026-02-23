@@ -11,7 +11,10 @@ struct User: Codable, Identifiable {
     let isActive: Bool
     let hasInsulinResistance: Bool
     let healthGoals: String?
-    
+    let onboardingCompleted: Bool
+    let agentPersona: String?
+    let preferredLanguage: String
+
     enum CodingKeys: String, CodingKey {
         case id = "user_id"
         case username
@@ -22,6 +25,9 @@ struct User: Codable, Identifiable {
         case isActive = "is_active"
         case hasInsulinResistance = "has_insulin_resistance"
         case healthGoals = "health_goals"
+        case onboardingCompleted = "onboarding_completed"
+        case agentPersona = "agent_persona"
+        case preferredLanguage = "preferred_language"
     }
 }
 

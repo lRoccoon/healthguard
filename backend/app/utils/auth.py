@@ -105,58 +105,51 @@ async def get_current_user_id(
     return token_data.user_id
 
 
-# Simple in-memory user store (for Phase 1)
-# In production, this should be replaced with a proper database
-_users_db: dict[str, dict] = {}
+# User storage - using persistent file-based storage
+from ..storage.user_storage import get_user_storage
+import uuid
 
 
-def get_user_from_db(user_id: str) -> Optional[dict]:
+async def get_user_from_db(user_id: str) -> Optional[dict]:
     """Get user from database by ID."""
-    return _users_db.get(user_id)
+    try:
+        return await get_user_storage().get_user(user_id)
+    except Exception as e:
+        print(f"Error getting user {user_id}: {e}")
+        return None
 
 
-def get_user_by_username(username: str) -> Optional[dict]:
+async def get_user_by_username(username: str) -> Optional[dict]:
     """Get user from database by username."""
-    for user_id, user in _users_db.items():
-        if user.get("username") == username:
-            return user
-    return None
+    try:
+        return await get_user_storage().get_user_by_username(username)
+    except Exception as e:
+        print(f"Error getting user by username {username}: {e}")
+        return None
 
 
-def create_user_in_db(username: str, hashed_password: str, email: Optional[str] = None) -> dict:
+async def create_user_in_db(username: str, hashed_password: str, email: Optional[str] = None) -> dict:
     """Create a new user in database."""
-    import uuid
-    
-    user_id = str(uuid.uuid4())
-    user = {
-        "user_id": user_id,
-        "username": username,
-        "email": email,
-        "hashed_password": hashed_password,
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc),
-        "is_active": True,
-        "has_insulin_resistance": True,
-        "health_goals": None,
-        "full_name": None
-    }
-    
-    _users_db[user_id] = user
-    return user
+    try:
+        user_id = str(uuid.uuid4())
+        return await get_user_storage().create_user(user_id, username, hashed_password, email)
+    except Exception as e:
+        print(f"Error creating user {username}: {e}")
+        raise
 
 
-def authenticate_user(username: str, password: str) -> Optional[dict]:
+async def authenticate_user(username: str, password: str) -> Optional[dict]:
     """
     Authenticate a user by username and password.
-    
+
     Args:
         username: Username
         password: Plain text password
-        
+
     Returns:
         Optional[dict]: User data if authenticated, None otherwise
     """
-    user = get_user_by_username(username)
+    user = await get_user_by_username(username)
     if not user:
         return None
     if not verify_password(password, user["hashed_password"]):
